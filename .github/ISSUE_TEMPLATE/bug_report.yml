@@ -1,0 +1,46 @@
+name: Bug report
+description: Something went wrong, such as a crash, a UI glitch, or RetroBoost touching something it should not have
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this!
+        **If RetroBoost deleted or stopped something it should not have, please say so in the title.** That is the highest-priority kind of bug.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: plan-screen
+    attributes:
+      label: What did the plan or result screen show?
+      description: Paste the text or describe it. Please remove personal paths and names.
+  - type: input
+    id: version
+    attributes:
+      label: RetroBoost version
+      placeholder: "1.0.0 (or the commit hash)"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Run this in PowerShell 7 and paste the result:
+        $PSVersionTable.PSVersion.ToString(); [Environment]::OSVersion.VersionString
+        If the problem is visual, also name your terminal (Windows Terminal, classic console...) and font.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (optional)
+      description: The relevant lines of %LOCALAPPDATA%\RetroBoost\boost.log. Please remove personal paths first.
+      render: text

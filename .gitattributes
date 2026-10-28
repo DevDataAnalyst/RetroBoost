@@ -1,0 +1,9 @@
+# Normalise line endings; cmd.exe wants CRLF in batch files.
+* text=auto
+*.ps1 text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.cmd text eol=crlf
+*.png binary
+*.gif binary

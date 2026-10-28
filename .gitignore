@@ -1,0 +1,15 @@
+# local settings and logs written by the app when run from the repo with a custom -ConfigDir
+config.json
+boost.log
+
+# editors and OS
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+Desktop.ini
+
+# scratch
+tmp/
+*.tmp
+rb-*/

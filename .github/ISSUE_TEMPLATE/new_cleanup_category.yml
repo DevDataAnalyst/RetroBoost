@@ -1,0 +1,56 @@
+name: New cleanup category
+description: Propose a cache or leftover folder that RetroBoost could clean safely
+title: "[Category] "
+labels: ["enhancement", "cleanup-category"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you! A good category only removes data that **comes back by itself**. See [docs/SAFETY.md](https://github.com/DevDataAnalyst/RetroBoost/blob/main/docs/SAFETY.md) and the checklist in [CONTRIBUTING.md](https://github.com/DevDataAnalyst/RetroBoost/blob/main/CONTRIBUTING.md#add-a-cleanup-category).
+  - type: input
+    id: app
+    attributes:
+      label: App or Windows feature, and version
+      placeholder: "ExampleApp 4.2"
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: Folder path(s)
+      description: Use environment variables (%LOCALAPPDATA%, %APPDATA%, %TEMP%, %USERPROFILE%) rather than your own user name.
+      placeholder: "%LOCALAPPDATA%\\ExampleApp\\Cache"
+    validations:
+      required: true
+  - type: textarea
+    id: regenerates
+    attributes:
+      label: How does the data come back?
+      description: Does the app rebuild it automatically? Is there a cost (slower first start, re-download)? How do you know?
+    validations:
+      required: true
+  - type: input
+    id: running
+    attributes:
+      label: Process name to check ("close it first")
+      placeholder: "ExampleApp"
+  - type: input
+    id: size
+    attributes:
+      label: Typical size you see
+      placeholder: "300 MB to 2 GB"
+  - type: input
+    id: windows
+    attributes:
+      label: Windows versions you checked
+      placeholder: "Windows 11 23H2"
+  - type: dropdown
+    id: pr
+    attributes:
+      label: Will you send a pull request?
+      options:
+        - "Yes"
+        - "I'd like help"
+        - "No, just suggesting"
+    validations:
+      required: true
