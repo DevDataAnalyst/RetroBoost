@@ -2,7 +2,7 @@
 
 > **Goal:** get a nearly full C: drive back to a healthy level in about 30 minutes, safely, starting with the steps that give the most space for the least risk.
 
-This works for any Windows 10 or 11 PC. Step 2 is automated by [RetroBoost](../README.md); the other steps use tools that are already built into Windows. Menu names differ slightly between Windows versions.
+This works for any Windows 10 or 11 PC. Steps 2, 4 and 7 can be done in [RetroBoost](../README.md); the other steps use tools that are already built into Windows. Menu names differ slightly between Windows versions.
 
 ## How much free space is "enough"?
 
@@ -13,12 +13,12 @@ Windows needs working room: feature updates, the page file, temporary files and 
 | # | Step | Time | Typical gain¹ | Risk | Tool |
 |---|------|------|---------------|------|------|
 | 1 | Measure | 1 min | n/a | none | RetroBoost gauge, or *Settings → System → Storage* |
-| 2 | Clear the safe junk | 2 min | 0.5–10 GB | very low | RetroBoost **BOOST NOW** |
+| 2 | Clear the safe junk | 2 min | 0.5–10 GB | very low | RetroBoost **BOOST NOW**, then **APP CLEAN** |
 | 3 | Let Windows clean itself | 5 min | 1–25 GB | low | *Settings → System → Storage → Temporary files* |
-| 4 | Uninstall what you don't use | 5 min | 2–50+ GB | low | *Settings → Apps → Installed apps* |
+| 4 | Uninstall what you don't use | 5 min | 2–50+ GB | low | RetroBoost **UNINSTALL**, or *Settings → Apps → Installed apps* |
 | 5 | Hunt big files | 10 min | varies | low if you look first | File Explorer search, or a disk-usage visualizer |
 | 6 | Move, don't delete | 10 min | 5–100+ GB moved | low | OneDrive, library locations, game launchers |
-| 7 | Keep it clean | 2 min, once | prevents the next crunch | none | Storage Sense, a monthly RetroBoost |
+| 7 | Keep it clean | 2 min, once | prevents the next crunch | none | Storage Sense, RetroBoost AUTO-CLEAN |
 | + | Developer extras | 10 min | 5–50+ GB | medium | Docker, WSL, SDKs, `node_modules` |
 | + | Advanced system features | 5 min | 2–20 GB | **higher: read first** | hibernation, restore points |
 
@@ -47,6 +47,8 @@ Run **BOOST NOW** (or *DISK CLEAN* if you want to tick things yourself). It remo
 
 Close your browser and VS Code first so those categories can run. The result screen shows before → after.
 
+Then open **APP CLEAN** (`A`): the winapp2 rules for the apps you actually have (browsers, Office, Adobe, chat apps, games). Press `S` to see what the pre-ticked cache, temp and log cleaners would free, tick more if you like (read the names: *history*, *cookies* and *session* rules remove what they say), and press ENTER.
+
 ## 3. Let Windows clean itself (5 minutes)
 
 Windows knows its own system files best, so let it remove them.
@@ -68,7 +70,7 @@ Tick what you want and choose **Remove files**. The classic tool, `cleanmgr` →
 
 ## 4. Uninstall what you don't use (5 minutes)
 
-Open **Settings → Apps → Installed apps** (Windows 10: *Apps & features*) and **sort by size**. Look for:
+In RetroBoost, **UNINSTALL** (`U`) lists Store apps and programs together and flags the ones put there to advertise or sell; Windows parts are locked. To see sizes, open **Settings → Apps → Installed apps** (Windows 10: *Apps & features*) and **sort by size**. Look for:
 
 - games you finished or never started (the biggest single win on many PCs),
 - creative and engineering suites you no longer open,
@@ -100,7 +102,7 @@ A hard disk is fine for archives and media; keep programs you use daily on the S
 ## 7. Keep it clean (2 minutes, once)
 
 - Turn on **Storage Sense** (*Settings → System → Storage → Storage Sense*) to remove temporary files and empty the Recycle Bin on a schedule. Be careful with its Downloads option.
-- Run RetroBoost **about once a month**, or whenever the gauge turns red.
+- In RetroBoost, set **SETTINGS → AUTO-CLEAN** to *DAILY* or *WEEKLY*: a silent safe clean that never stops your programs. Or run RetroBoost **about once a month**, or whenever the gauge turns red.
 - If a Windows update fails with a space error, repeat steps 2–4 first.
 
 ---
@@ -146,9 +148,10 @@ And skip "registry cleaners" and "PC optimizer" suites: they promise a lot and r
 | Plan step | RetroBoost |
 |---|---|
 | 1 Measure | the disk gauge on the main screen |
-| 2 Safe junk | **BOOST NOW** and **DISK CLEAN** |
+| 2 Safe junk | **BOOST NOW**, **DISK CLEAN** and **APP CLEAN** |
 | 3 Windows cleanup | `W` on the Disk screen opens the right Settings page |
-| 4–6 | out of scope today ([ideas on the roadmap](ROADMAP.md): a big-files explorer) |
-| 7 Keep it clean | run it monthly |
+| 4 Uninstall | **UNINSTALL** |
+| 5–6 | out of scope today ([ideas on the roadmap](ROADMAP.md): a big-files explorer) |
+| 7 Keep it clean | **AUTO-CLEAN** in Settings, or run it monthly |
 
 Have a tip that belongs in this guide? [Send a pull request](../CONTRIBUTING.md): this is the most useful page for non-developers.

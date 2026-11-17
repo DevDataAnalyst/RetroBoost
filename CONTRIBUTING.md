@@ -37,9 +37,9 @@ pwsh -File tools/Render-Screenshots.ps1                      # regenerate docs/s
 
 ## Principles (please keep these)
 
-1. **Safety first.** RetroBoost deletes files and stops programs. Read [docs/SAFETY.md](docs/SAFETY.md) before changing anything destructive.
-2. **Only regenerable data.** No documents, photos, downloads or anything the user can't get back.
-3. **No admin by default.** Elevated features must be opt-in, explicit and guarded.
+1. **Safety first.** RetroBoost deletes files, writes settings, uninstalls apps and stops programs. Read [docs/SAFETY.md](docs/SAFETY.md) before changing anything destructive.
+2. **Regenerable data by default.** No documents, photos, downloads or anything the user can't get back. Anything riskier starts unticked, and the guards (`Test-Never`, `Test-Keep`) are never weakened.
+3. **No admin by default.** Elevated features must be opt-in, explicit and guarded (like the `[A]` tweaks).
 4. **Transparent.** Plan before action, a dry-run path, and a log line for every action. No network calls, no telemetry.
 5. **Readable.** One script anyone can audit in an evening. Prefer a clear 5 lines to a clever 1.
 
@@ -56,6 +56,14 @@ The most common contribution. Checklist:
 - [ ] **Screenshots:** if the Disk screen changes, re-run `tools/Render-Screenshots.ps1`.
 
 Use the **New cleanup category** issue form to discuss it first; maintainers will help you check the path.
+
+### Or: an app cleaner (winapp2 rule)
+
+Cleaning one app's cache is usually a [winapp2](https://github.com/MoscaDotTo/Winapp2) rule rather than a new category. `data/Winapp2.ini` is a copy of the Winapp2 project's database (CC BY-SA 4.0): send new or fixed rules **upstream**, so every winapp2 tool benefits, and test them locally in `%LOCALAPPDATA%\RetroBoost\custom\*.ini` (APP CLEAN reads that folder after the built-in file). Changes to how rules are *run* (the engine and its guards) belong here, with a sandbox test.
+
+### Or: a tweak
+
+One `[section]` in `data/WinRules.ini` (the header of that file documents every key). Checklist: a plain-words `Description`, the Windows default in `DefaultValue` (or `<deletevalue>`) so it can be undone, `Restart=explorer|system` if it only shows after a restart, `OsVersion` if it applies to one Windows version only, and a note in the PR of how you checked the value on a real PC. The catalogue comes from FluentCleaner: corrections are worth sending [upstream](https://github.com/builtbybel/FluentCleaner) too.
 
 ## Code style
 
@@ -86,4 +94,4 @@ Use the **Bug report** form. Include your Windows version, terminal, `$PSVersion
 
 ## License
 
-By contributing you agree that your contributions are licensed under the [MIT License](LICENSE). Contributors are thanked in the release notes.
+By contributing you agree that your contributions are licensed under the [MIT License](LICENSE). The rule files in `data/` keep their own licenses (see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)): changes to `Winapp2.ini` are shared under CC BY-SA 4.0. Contributors are thanked in the release notes.

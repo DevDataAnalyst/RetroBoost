@@ -2,8 +2,9 @@
 
 RetroBoost deletes files and stops programs, so a bug can matter. These are treated as **security-relevant** and fixed first:
 
-- RetroBoost deletes, or offers to delete, something outside the documented categories (see [docs/SAFETY.md](docs/SAFETY.md)).
-- It can stop a protected program (Windows core, security tools, the terminal).
+- RetroBoost deletes, or offers to delete, something outside the documented categories, or an APP CLEAN rule gets past the guards (your folders, the Windows folder; see [docs/SAFETY.md](docs/SAFETY.md)).
+- It can stop a protected program (Windows core, security tools, the terminal), or offer to uninstall a protected app.
+- A tweak writes something other than what the catalogue says, or claims success when Windows did not keep the value.
 - A crafted `config.json`, folder name or file name makes it act on the wrong target (for example path traversal or an unexpected wildcard match).
 - It makes a network call, or leaks personal data into logs or screenshots.
 
@@ -20,6 +21,7 @@ You will get an acknowledgement as soon as a maintainer can, and credit in the r
 
 ## Good to know
 
-- RetroBoost is an unsigned script that runs with your normal user rights. It never asks for administrator rights.
+- RetroBoost is an unsigned script that runs with your normal user rights. It never asks for administrator rights (you may start it elevated to unlock the `[A]` tweaks).
+- What APP CLEAN deletes is decided by rule files (`data/Winapp2.ini` and your own `custom\*.ini`), always inside the guards. A rule file is data you choose to trust, like a script: only add rules from sources you trust.
 - It makes no network calls. If you see one, that is a bug.
 - You can read the whole program in [`src/retroboost.ps1`](src/retroboost.ps1) and run it safely with `-Demo` or `-DryRun`.
