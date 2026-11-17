@@ -63,15 +63,18 @@ $selfPath = $PSCommandPath   # this script, for the scheduled -Auto task
 $cfgFile = Join-Path $ConfigDir 'config.json'
 $logFile = Join-Path $ConfigDir 'boost.log'
 # appClean: the APP CLEAN ticks you saved (null = the safe defaults); exclude: winapp2-style PATH|dir[|pattern] / FILE|dir|name lines
-$cfg = [ordered]@{ theme = 'blue'; sound = $true; confirm = $true; killList = @(); boostApps = $false; schedule = 'off'; appClean = $null; exclude = @() }
+# keepCookies: sites whose cookies the cookie cleaners keep (the cookie keep-list)
+$cfg = [ordered]@{ theme = 'blue'; sound = $true; confirm = $true; killList = @(); boostApps = $false; schedule = 'off'; appClean = $null; exclude = @(); keepCookies = @() }
 if (Test-Path -LiteralPath $cfgFile) {
     try { $j = Get-Content -LiteralPath $cfgFile -Raw | ConvertFrom-Json; foreach ($k in @($cfg.Keys)) { if ($null -ne $j.$k) { $cfg[$k] = $j.$k } } } catch { }
 }
 $cfg.killList = @($cfg.killList | ForEach-Object { "$_" } | Where-Object { $_ })
 $cfg.exclude = @($cfg.exclude | ForEach-Object { "$_" } | Where-Object { $_ })
+$cfg.keepCookies = @($cfg.keepCookies | ForEach-Object { "$_" } | Where-Object { $_ })
 if ($null -ne $cfg.appClean) { $cfg.appClean = @($cfg.appClean | ForEach-Object { "$_" }) }
 if ($Theme) { $cfg.theme = $Theme }
-if ($Demo) { $cfg.killList = @('chatapp', 'gamelauncher', 'updater-agent'); $cfg.sound = $false; $logFile = '%LOCALAPPDATA%\RetroBoost\boost.log' }
+if ($Demo) { $cfg.killList = @('chatapp', 'gamelauncher', 'updater-agent'); $cfg.keepCookies = @('github.com', 'bank.example'); $cfg.sound = $false; $logFile = '%LOCALAPPDATA%\RetroBoost\boost.log' }
+$script:CookieGone = 0; $script:CookieStores = 0   # what the cookie keep-list removed in this run
 function Save-Cfg { if ($script:Dirty -and -not $Demo) { try { $null = New-Item -ItemType Directory -Force -Path $ConfigDir; $cfg | ConvertTo-Json | Set-Content -LiteralPath $cfgFile } catch { } } }
 function Write-Log([string]$m) { if ($Demo) { return }; try { $null = New-Item -ItemType Directory -Force -Path $ConfigDir; Add-Content -LiteralPath $logFile ('{0:yyyy-MM-dd HH:mm:ss} {1}{2}' -f (Get-Date), $(if ($script:Dry) { '[DRY] ' }), $m) } catch { } }
 
@@ -257,6 +260,41 @@ function Use-Native {   # a few Windows calls, compiled once on first use
 [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)] static extern Microsoft.Win32.SafeHandles.SafeFileHandle CreateFileW(string name, uint access, uint share, IntPtr sa, uint disposition, uint flags, IntPtr template);
 // asks for DELETE access the way a delete would: false for files in use without share-delete, or that need admin
 public static bool CanDelete(string path) { using (var h = CreateFileW(path, 0x00010000, 7, IntPtr.Zero, 3, 0x00200000, IntPtr.Zero)) { return !h.IsInvalid; } }
+// the cookie keep-list edits browser cookie databases with the SQLite that ships with Windows (winsqlite3.dll), like FluentCleaner
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_open_v2(byte[] name, out IntPtr db, int flags, IntPtr vfs);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)] static extern int sqlite3_prepare16_v2(IntPtr db, string sql, int bytes, out IntPtr st, IntPtr tail);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_step(IntPtr st);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr sqlite3_column_text16(IntPtr st, int col);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_finalize(IntPtr st);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_changes(IntPtr db);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_busy_timeout(IntPtr db, int ms);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_close_v2(IntPtr db);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr sqlite3_errmsg16(IntPtr db);
+static string SqlError(IntPtr db) { var p = sqlite3_errmsg16(db); return p == IntPtr.Zero ? "SQLite error" : Marshal.PtrToStringUni(p); }
+static IntPtr SqlOpen(string path, int flags) {   // 1 = read only, 2 = read and write; never creates a file
+    IntPtr db; int rc = sqlite3_open_v2(System.Text.Encoding.UTF8.GetBytes(path + "\0"), out db, flags, IntPtr.Zero);
+    if (rc != 0) { var m = SqlError(db); sqlite3_close_v2(db); throw new InvalidOperationException(m); }
+    sqlite3_busy_timeout(db, 250); return db;
+}
+static System.Collections.Generic.List<string> SqlRun(IntPtr db, string sql) {   // one statement; the first column of each row; throws on any error
+    IntPtr st; var rows = new System.Collections.Generic.List<string>();
+    if (sqlite3_prepare16_v2(db, sql, -1, out st, IntPtr.Zero) != 0) throw new InvalidOperationException(SqlError(db));
+    try { int rc; while ((rc = sqlite3_step(st)) == 100) { var p = sqlite3_column_text16(st, 0); if (p != IntPtr.Zero) rows.Add(Marshal.PtrToStringUni(p)); }
+          if (rc != 101) throw new InvalidOperationException(SqlError(db)); }
+    finally { sqlite3_finalize(st); }
+    return rows;
+}
+public static string[] SqlRows(string path, string sql) { var db = SqlOpen(path, 1); try { return SqlRun(db, sql).ToArray(); } finally { sqlite3_close_v2(db); } }
+public static int SqlDelete(string path, string sql) {   // one DELETE inside a transaction (rolled back on any error), then shrink the file
+    var db = SqlOpen(path, 2);
+    try {
+        SqlRun(db, "BEGIN IMMEDIATE"); int n;
+        try { SqlRun(db, sql); n = sqlite3_changes(db); SqlRun(db, "COMMIT"); }
+        catch { try { SqlRun(db, "ROLLBACK"); } catch { } throw; }
+        try { SqlRun(db, "PRAGMA wal_checkpoint(TRUNCATE)"); SqlRun(db, "VACUUM"); } catch { }
+        return n;
+    } finally { sqlite3_close_v2(db); }
+}
 '@
     }
 }
@@ -450,8 +488,14 @@ function Clean-Rule($r) {   # deletes what Scan-Rule found; returns the bytes fr
     if (-not $r.Scanned) { Scan-Rule $r }
     $r.Scanned = $false   # sizes are stale once cleaned
     if ($Demo) { $script:DemoDisk += $r.Bytes; return [long]$r.Bytes }
-    $freed = 0L
-    foreach ($f in $r.FileList) { $n = $f.Length; try { if (-not $script:Dry) { $f.Delete() }; $freed += $n } catch { } }   # in use or read-only: skipped
+    $freed = 0L; $keep = @(Get-Keep)
+    foreach ($f in $r.FileList) {
+        if ($keep.Count -and ($kind = Get-CookieKind $f)) {   # cookie keep-list: edit the store, leave its helper files
+            if ($kind -eq 'store' -and -not $script:Dry) { $freed += Keep-Cookies $f $keep }
+            continue
+        }
+        $n = $f.Length; try { if (-not $script:Dry) { $f.Delete() }; $freed += $n } catch { }   # in use or read-only: skipped
+    }
     if ($script:Dry) { return $freed }
     foreach ($x in $r.RegList) { $q = Split-Reg $x.Key; try { if ($x.Value) { $k = $q.Root.OpenSubKey($q.Sub, $true); if ($k) { $k.DeleteValue($x.Value, $false); $k.Dispose() } } else { $q.Root.DeleteSubKeyTree($q.Sub, $false) } } catch { } }
     foreach ($fk in $r.Files) { $q = $fk.Split('|'); if ($q[-1].Trim() -eq 'REMOVESELF') { foreach ($d in (Resolve-W $q[0].Trim())) { Remove-Empty $d } } }
@@ -514,6 +558,68 @@ function Save-Ticks {   # remember the APP CLEAN ticks (rules not found on this 
     $names = @($app.rules | ForEach-Object Name)
     $cfg.appClean = @(@($cfg.appClean | Where-Object { $_ -and $_ -notin $names }) + @($app.rules | Where-Object On | ForEach-Object Name))
     $app.acDirty = $false; $script:Dirty = $true
+}
+
+# ---------- COOKIE KEEP-LIST (ported from FluentCleaner's Cookie Manager) ----------
+# With sites on the list, a cookie cleaner no longer deletes a browser's cookie database: it deletes every other site's
+# cookies inside it and keeps these sites (and their subdomains) signed in. A database it cannot edit is left whole.
+function Format-Domain([string]$s) {   # 'https://Mail.GitHub.com/x', '.github.com', '*.github.com' -> 'mail.github.com' / 'github.com'
+    $d = "$s".Trim(); if (-not $d) { return '' }
+    $u = $null; if ([Uri]::TryCreate($(if ($d.Contains('://')) { $d } else { "https://$d" }), 'Absolute', [ref]$u) -and $u.Host) { $d = $u.Host }
+    $d = $d.Trim().TrimStart('*').TrimStart('.').TrimEnd('.').ToLowerInvariant()
+    try { [Globalization.IdnMapping]::new().GetAscii($d) } catch { '' }
+}
+# ponytail: last two labels (three after co.uk-style endings) stand in for the Public Suffix List; the error side is safe,
+# keeping a little more (all of github.io), never less
+function Get-Site([string]$d) {
+    $p = $d.Split('.'); if ($p.Count -le 2 -or $d -match '^[\d.:]+$') { return $d }
+    $(if ($p[-1].Length -eq 2 -and $p[-2].Length -le 3) { $p[-3..-1] } else { $p[-2..-1] }) -join '.'
+}
+function Get-Keep { @($cfg.keepCookies | ForEach-Object { Format-Domain $_ } | Where-Object { $_ } | Select-Object -Unique) }
+function Get-CookieKind([IO.FileInfo]$f) {   # 'store' = a browser cookie database, 'side' = its journal or session file, $null = neither
+    $n = $f.Name
+    if ($n -eq 'Cookies' -or $n -eq 'cookies.sqlite') { return 'store' }
+    if (($n -like 'Cookies-*' -or $n -like 'cookies.sqlite*' -or $n -like 'Device Bound Sessions*') -and ([IO.File]::Exists("$($f.DirectoryName)\Cookies") -or [IO.File]::Exists("$($f.DirectoryName)\cookies.sqlite"))) { return 'side' }
+    $null
+}
+function Keep-Cookies([IO.FileInfo]$f, $keep) {   # deletes every other site's cookies inside the store; returns the bytes freed
+    $ff = $f.Name -eq 'cookies.sqlite'; $col = if ($ff) { 'host' } else { 'host_key' }   # Firefox family, else Chromium family
+    $where = @(foreach ($d in $keep) { $q = $d.Replace("'", "''"); "lower(ltrim($col, '.')) = '$q' OR lower(ltrim($col, '.')) LIKE '%.$q'" }) -join ' OR '
+    $before = $f.Length
+    try {
+        Use-Native
+        $n = [RB.Win32]::SqlDelete($f.FullName, "DELETE FROM $(if ($ff) { 'moz_cookies' } else { 'cookies' }) WHERE NOT ($where)")
+        $f.Refresh(); $script:CookieGone += $n; $script:CookieStores++
+        Write-Log "cookies: kept $($keep.Count) site(s), removed $n cookie(s) in $($f.FullName)"
+        [Math]::Max(0L, $before - $f.Length)
+    } catch { Write-Log "cookies: left $($f.FullName) whole ($($_.Exception.Message))"; 0L }
+}
+function Get-CookieStores {   # the cookie databases that the detected browsers' cookie rules point at
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($r in @($app.rules | Where-Object { $_.Name -match '\bCookies\b' -and $_.Name -notmatch 'Extension' })) {
+        foreach ($fk in $r.Files) { foreach ($d in (Resolve-W $fk.Split('|')[0].Trim())) { foreach ($n in 'Cookies', 'cookies.sqlite') { $p = "$($d.TrimEnd('\'))\$n"; if ([IO.File]::Exists($p) -and $seen.Add($p)) { $p } } } }
+    }
+}
+function Load-Cookies {   # every site with cookies in a detected browser, plus the sites already on the keep-list
+    $keep = Get-Keep
+    if ($Demo) { $hosts = 'github.com', 'mail.google.com', 'youtube.com', 'en.wikipedia.org', 'bank.example', 'shop.example', 'news.example', 'ads.tracker.example', 'cdn.tracker.example', 'bbc.co.uk'; $app.cstat = @(4, 0) }
+    else {
+        Load-Rules
+        Set-Msg 'READING  the cookie databases of your browsers ...'; if (-not $script:Quiet) { Redraw }
+        Use-Native; $hosts = [Collections.Generic.List[string]]::new(); $n = 0; $busy = 0
+        foreach ($s in @(Get-CookieStores)) {
+            $n++; $sql = if ($s.EndsWith('cookies.sqlite', 'OrdinalIgnoreCase')) { 'SELECT DISTINCT host FROM moz_cookies' } else { 'SELECT DISTINCT host_key FROM cookies' }
+            try { $hosts.AddRange([string[]][RB.Win32]::SqlRows($s, $sql)) } catch { $busy++ }   # a running browser keeps its database locked
+        }
+        $app.cstat = @($n, $busy); Set-Msg ''
+    }
+    $sites = @($hosts | ForEach-Object { Format-Domain $_ } | Where-Object { $_ } | ForEach-Object { Get-Site $_ }) + $keep | Select-Object -Unique | Sort-Object
+    $app.sites = @(foreach ($s in $sites) { [pscustomobject]@{ Name = $s; Keep = $s -in $keep } })
+    $app.ckDirty = $false
+}
+function Set-CookieItems($focus) {   # kept sites first; the selection follows the site that just moved
+    Set-Items @(@('KEPT: these sites stay signed in', @($app.sites | Where-Object Keep)), @('OTHER SITES: their cookies go when a cookie cleaner runs', @($app.sites | Where-Object { -not $_.Keep })))
+    if ($focus) { $i = [array]::IndexOf($app.items, $focus); if ($i -ge 0) { $app.lsel = $i } }
 }
 
 # ---------- TWEAKS: the WinRules.ini catalogue (ported from FluentCleaner) ----------
@@ -868,7 +974,7 @@ function Draw-Logo([int]$r, [int]$c, [string]$word) {
 }
 function Draw-Chrome([string]$hint) {
     Clear-Buf
-    Put 0 0 (Fit '  RETROBOOST v2.0   ::   PC TUNE-UP UTILITY' $COLS) $sty.title
+    Put 0 0 (Fit '  RETROBOOST v2.1   ::   PC TUNE-UP UTILITY' $COLS) $sty.title
     if ($Demo) { Put 0 ($COLS - 8) ' DEMO ' $sty.warn } elseif ($script:Dry) { Put 0 ($COLS - 11) ' DRY-RUN ' $sty.warn } elseif ($script:IsAdmin) { Put 0 ($COLS - 9) ' ADMIN ' $sty.warn }
     Put ($ROWS - 1) 0 (Fit "  $hint" $COLS) $sty.title
     if ($app.msg) { Put ($ROWS - 2) 2 (Fit $app.msg ($COLS - 4)) $sty[$app.msgStyle] }
@@ -877,7 +983,8 @@ function Draw-Chrome([string]$hint) {
 # ---------- app state and screens ----------
 $app = @{ screen = 'main'; back = 'main'; sel = 0; msg = ''; msgStyle = 'dim'; quit = $false; sys = $null; cpu = 0
     cats = @(); dsel = 0; procs = @(); plist = @(); psel = 0; ptop = 0; psort = 'mem'; marks = @{}; ssel = 0; log = $null; pct = 0; title = ''; res = $null
-    rules = $null; tweaks = @(); uapps = $null; items = @(); lsel = 0; ltop = 0; acDirty = $false }   # items/lsel/ltop: the list on APP CLEAN, TWEAKS or UNINSTALL
+    rules = $null; tweaks = @(); uapps = $null; sites = @(); cstat = $null; ckDirty = $false
+    items = @(); lsel = 0; ltop = 0; acDirty = $false }   # items/lsel/ltop: the list on APP CLEAN, COOKIES, TWEAKS or UNINSTALL
 $menu = @(   # two columns of five: the first five on the left
     @{ Key = 'B'; Name = 'BOOST NOW'; Desc = 'clean safe junk, trim RAM, close your kill-list programs' }
     @{ Key = 'D'; Name = 'DISK CLEAN'; Desc = 'temp files, package and browser caches, crash dumps' }
@@ -946,7 +1053,7 @@ function Draw-List([scriptblock]$line) {   # rows 5..17; $line turns an item int
 function Put-Info($lines) { $i = 0; foreach ($l in @($lines) | Select-Object -First 3) { Put (19 + $i) 4 (Fit $l[0] 72) $sty[$l[1]]; $i++ } }   # rows 19..21
 
 function Draw-appclean {
-    Draw-Chrome '↑↓ move  ←→ group  SPACE tick  A safe set  N none  S scan  ENTER clean  ESC'
+    Draw-Chrome '↑↓←→ move  SPACE tick  A safe  N none  S scan  C cookies  ENTER clean  ESC'
     Box 1 1 22 76 (' APP CLEAN  -  {0} app cleaners match this PC ' -f [int]$app.rules.Count)
     Put 3 4 'SEL  CLEANER' $sty.dim; Put 3 53 '    FOUND' $sty.dim; Put 3 64 'STATUS' $sty.dim
     Put 4 3 ('─' * 72) $sty.frame
@@ -964,8 +1071,21 @@ function Draw-appclean {
     if (-not $x) { return }
     if ($x.Head) { Put-Info @(@('SPACE ticks or clears every cleaner in this group.', 'dim'), @('A + after a size means registry entries are cleaned too.', 'dim')); return }
     $info = @(foreach ($l in @(Wrap $x.Warn 72)) { , @($l, 'warn') }) + @(foreach ($l in @($x.Files) + @($x.Regs)) { , @("cleans  $l", 'dim') })
+    if ($x.Name -match '\bCookies\b' -and $x.Name -notmatch 'Extension') { $k = @(Get-Keep).Count; $info = @(, @($(if ($k) { "C: $k site(s) on your keep-list stay signed in; the rest go." } else { 'C: choose sites to keep. With none kept, this deletes every cookie.' }), $(if ($k) { 'ok' } else { 'warn' }))) + $info }
     if (-not $x.Ready) { $info = @(, @("Close $($x.Why.Substring(6)) first, then come back: its files are in use.", 'warn')) + $info }
     Put-Info $info
+}
+
+function Draw-cookies {
+    Draw-Chrome '↑↓ move  ←→ group  SPACE keep or forget  letter = jump to a site  ESC back'
+    Box 1 1 22 76 ' COOKIES  -  sites that stay signed in '
+    Put 3 4 'KEEP SITE' $sty.dim
+    Put 4 3 ('─' * 72) $sty.frame
+    Draw-List { param($s) @(('{0}  {1}' -f $(if ($s.Keep) { '[k]' } else { '[ ]' }), $s.Name), $(if ($s.Keep) { 'ok' } else { 'norm' })) }
+    if (-not $app.sites.Count) { Put 6 6 'No cookies found in a browser RetroBoost knows (or the browsers are open).' $sty.dim }
+    $busy = if ($app.cstat -and $app.cstat[1]) { "   ·   $($app.cstat[1]) busy: close the browser" } else { '' }
+    Put 18 4 (Fit ('KEPT: {0}   ·   SITES: {1}   ·   STORES: {2}{3}' -f @($app.sites | Where-Object Keep).Count, $app.sites.Count, $(if ($app.cstat) { $app.cstat[0] } else { 0 }), $busy) 72) $sty.hi
+    Put-Info @(@('With sites kept, the cookie cleaners of APP CLEAN delete every other', 'dim'), @("site's cookies and keep these, with their subdomains, signed in.", 'dim'), @('With none kept, those cleaners delete the whole cookie file.', 'dim'))
 }
 
 function Draw-tweaks {
@@ -1094,7 +1214,7 @@ function Draw-settings {
         Put (11 + $i) 3 (Fit $line 72) $(if ($idx -eq $app.ssel) { $sty.sel } else { $sty.norm })
     }
     Put 20 4 (Fit $(if ($Demo) { 'Demo mode: nothing is written, deleted or stopped.' } else { "Log: $logFile" }) 72) $sty.dim
-    Put 21 4 (Fit ('Own rules: {0}\custom\*.ini  ·  exclusions: {1}' -f $ConfigDir.Replace($env:LOCALAPPDATA, '%LOCALAPPDATA%'), $cfg.exclude.Count) 72) $sty.dim
+    Put 21 4 (Fit ('Cookie keep-list: {0} (C on APP CLEAN)  ·  exclusions: {1}  ·  rules: custom\*.ini' -f @(Get-Keep).Count, $cfg.exclude.Count) 72) $sty.dim
 }
 
 function Draw-help {
@@ -1105,8 +1225,8 @@ function Draw-help {
         , @('DISK CLEAN  temp files older than a day, package and browser caches,', 'norm')
         , @('            installer downloads, crash dumps. Recycle Bin: unticked.', 'norm')
         , @('APP CLEAN   4,000+ winapp2.ini cleaners. Only cache, temp and log rules', 'norm')
-        , @('            start ticked; history, cookies and sessions are yours to', 'norm')
-        , @('            tick. Your files and Windows folders are never touched.', 'norm')
+        , @('            start ticked. C picks sites whose cookies stay. Your files', 'norm')
+        , @('            and the Windows folder are never touched.', 'norm')
         , @('TWEAKS      switch off ads, tips, telemetry. A ticked ON row is undone.', 'norm')
         , @('            [A] rows need RetroBoost started as administrator.', 'norm')
         , @('UNINSTALL   Store apps and programs. Nothing is pre-ticked; Windows', 'norm')
@@ -1150,6 +1270,7 @@ function Draw-result {
         Put ($y + 1) 20 'temporary: Windows refills it on demand' $sty.dim
         $y += 3
     }
+    if ($x.CookieStores) { . $line 'COOKIES' ('{0} removed from {1} store(s), {2} site(s) kept' -f $x.CookieGone, $x.CookieStores, $x.CookieKept) 'ok' }
     if ($x.Closed.Count) { . $line $(if ($x.Dry) { 'WOULD STOP' } else { 'STOPPED' }) ($x.Closed -join ', ') 'hi' }
     if ($x.Stuck.Count) { . $line 'STILL OPEN' (($x.Stuck -join ', ') + '  (a window is waiting for you)') 'warn' }
     if ($x.Skipped.Count) { . $line 'SKIPPED' ($x.Skipped -join '; ') 'warn' }
@@ -1184,6 +1305,7 @@ function Open-Screen([string]$name) {
         'settings' { $app.ssel = 0 }
         'main' { $app.sys = Get-Sys }
         'appclean' { $app.items = @(); Load-Rules; Set-Items @(Group-Keep $app.rules 'Cat') }
+        'cookies' { $app.items = @(); Load-Cookies; Set-CookieItems $null }
         'tweaks' { $app.items = @(); Load-Tweaks; Set-Items @(Group-Keep $app.tweaks 'Cat') }
         'uninst' {
             $app.items = @(); Load-Apps
@@ -1236,11 +1358,31 @@ function Key-appclean([string]$k) {
         'A' { foreach ($r in $app.rules) { $r.On = Get-SafeTick $r }; $app.acDirty = $true; Set-Msg 'Safe set: only cache, temp and log cleaners are ticked.' }
         'N' { foreach ($r in $app.rules) { $r.On = $false }; $app.acDirty = $true }
         'S' { Scan-Rules @($app.rules | Where-Object { $_.On -and $_.Ready }); Set-Msg 'Scanned: sizes are what the ticked cleaners would delete now.' }
+        'C' { Save-Ticks; Open-Screen 'cookies' }
         'ENTER' {
             $sel = @(Get-RuleJobs)
             if ($sel) { Save-Ticks; Start-Run @{ Title = 'APP CLEAN'; Clean = $sel; Ask = $true; Skipped = (Get-Skipped $app.rules) } } else { Set-Msg 'Nothing to clean: tick something (or nothing was found).' 'warn' }
         }
         'ESC' { Save-Ticks; Open-Screen 'main' }
+    }
+}
+function Key-cookies([string]$k) {
+    if (Move-Sel $k) { return }
+    $x = $app.items[$app.lsel]
+    switch ($k) {
+        'SPACE' {
+            if (-not $x -or $x.Head) { break }
+            $x.Keep = -not $x.Keep; $app.ckDirty = $true; Set-CookieItems $x
+            Set-Msg $(if ($x.Keep) { "$($x.Name) stays signed in." } else { "$($x.Name) is off the keep-list." }) $(if ($x.Keep) { 'ok' } else { 'dim' })
+        }
+        'ESC' {
+            if ($app.ckDirty) { $cfg.keepCookies = @($app.sites | Where-Object Keep | ForEach-Object Name); $script:Dirty = $true; Save-Cfg }
+            Open-Screen 'appclean'
+        }
+        default {   # type-ahead: the next site that starts with this letter
+            $n = $app.items.Count
+            if ($k.Length -eq 1 -and $n) { for ($i = 1; $i -le $n; $i++) { $j = ($app.lsel + $i) % $n; if (-not $app.items[$j].Head -and $app.items[$j].Name.StartsWith($k, 'OrdinalIgnoreCase')) { $app.lsel = $j; break } } }
+        }
     }
 }
 function Key-tweaks([string]$k) {
@@ -1376,9 +1518,15 @@ function Show-Plan($job) {
     if ($script:Dry) { $ln.Add(@('DRY-RUN is on: nothing will really change.', 'warn')) }
     if ($job['Force']) { $ln.Add(@('FORCE: programs are killed at once. Unsaved work in them is lost.', 'bad')) }
     if ($sel.Count) {
-        $ln.Add(@(('DISK   clean {0} item(s), about {1}' -f $sel.Count, (Gb ($sel | Measure-Object Bytes -Sum).Sum)), 'hi'))
+        $ln.Add(@(('DISK   clean {0} item(s), about {1}' -f $sel.Count, (Sz ([long]($sel | Measure-Object Bytes -Sum).Sum))), 'hi'))
         foreach ($c in $sel | Select-Object -First 5) { $ln.Add(@(('      {0} {1,10}' -f (Fit $c.Name 41), (Sz $c.Bytes)), 'norm')) }
         if ($sel.Count -gt 5) { $ln.Add(@("      ... and $($sel.Count - 5) more", 'dim')) }
+        $stores = @($sel | Where-Object { $_.Kind -eq 'rule' } | ForEach-Object { $_.FileList } | Where-Object { (Get-CookieKind $_) -eq 'store' }).Count
+        if ($stores) {
+            $keep = @(Get-Keep)
+            if ($keep.Count) { $ln.Add(@(('COOKIE keep {0} site(s) signed in: {1}' -f $keep.Count, (($keep | Select-Object -First 3) -join ', ')), 'ok')) }
+            else { $ln.Add(@('COOKIE every cookie goes: you are signed out of every site', 'warn')); $ln.Add(@('      (APP CLEAN > C keeps the sites you choose)', 'dim')) }
+        }
     }
     if ($kill.Count) {
         $ln.Add(@(('STOP   {0} program(s): {1}' -f $kill.Count, (($kill | Select-Object -First 6) -join ', ')), 'hi'))
@@ -1426,6 +1574,7 @@ function Start-Run($job) {
     elseif ($job['Ask'] -and (($title -ne 'BOOST') -or $cfg.confirm) -and -not (Show-Plan $job)) { Set-Msg 'Cancelled.'; return }
     $before = Get-Sys
     $app.screen = 'run'; $app.title = $title; $app.pct = 0; $app.log = [System.Collections.Generic.List[object]]::new(); Set-Msg ''
+    $script:CookieGone = 0; $script:CookieStores = 0
     $total = [Math]::Max(1, $sel.Count + $kill.Count + [int]$ram + $tw.Count + $rm.Count); $done = 0
     $freed = 0L; $closed = [System.Collections.Generic.List[string]]::new(); $stuck = [System.Collections.Generic.List[string]]::new(); $trim = $null
     $twOk = 0; $twUndo = 0; $twFail = [System.Collections.Generic.List[string]]::new(); $restart = [System.Collections.Generic.List[string]]::new()
@@ -1473,6 +1622,7 @@ function Start-Run($job) {
         Dry = $script:Dry; Cleaned = [bool]$sel.Count; Freed = $freed; Trimmed = [bool]$ram; Closed = @($closed); Stuck = @($stuck); Skipped = (Arr $job['Skipped'])
         DiskBefore = $before.DiskFree; DiskAfter = $after.DiskFree; RamBefore = $before.RamFree; RamAfter = $after.RamFree   # whole run, so freed programs count too
         Tweaked = $twOk; Undone = $twUndo; TwFail = @($twFail); Restart = @($restart); Removed = @($removed); RmFail = @($rmFail)
+        CookieGone = $script:CookieGone; CookieStores = $script:CookieStores; CookieKept = @(Get-Keep).Count
     }
     Write-Log ("$title done: freed {0}" -f (Gb $freed))
     $app.screen = 'result'; Snd 'ok'
@@ -1507,7 +1657,7 @@ function Show-Splash {
         if ([Console]::KeyAvailable) { [void][Console]::ReadKey($true); return $true }
         Start-Sleep -Milliseconds 110; $false
     }
-    if (& $step 1 'RETROBOOST BIOS v2.0        (C) 1987-2026 RETRO SOFTWARE' $sty.hi) { return }
+    if (& $step 1 'RETROBOOST BIOS v2.1        (C) 1987-2026 RETRO SOFTWARE' $sty.hi) { return }
     if (& $step 3 ('CPU       : {0}' -f $cpu) $sty.norm) { return }
     for ($m = 0; $m -lt 10; $m++) { Put 4 2 ('RAM TEST  : {0,6} MB' -f [int]($totMb * ($m + 1) / 10)) $sty.norm; Show-Buf; Start-Sleep -Milliseconds 35 }
     Put 4 60 '[ OK ]' $sty.ok; Put 3 60 '[ OK ]' $sty.ok
@@ -1527,7 +1677,7 @@ try {
     Set-Theme $cfg.theme
     $app.sys = Get-Sys; $app.cpu = if ($script:Test -and -not $Demo) { 0 } else { Get-Cpu }
     if ($Screenshot) {
-        $names = if ($Screenshot -eq 'all') { 'main', 'disk', 'appclean', 'ram', 'procs', 'tweaks', 'uninst', 'settings', 'help' } else { , $Screenshot }
+        $names = if ($Screenshot -eq 'all') { 'main', 'disk', 'appclean', 'cookies', 'ram', 'procs', 'tweaks', 'uninst', 'settings', 'help' } else { , $Screenshot }
         foreach ($n in $names) { Open-Screen $n; Redraw }
         return
     }

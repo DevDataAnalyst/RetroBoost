@@ -18,7 +18,7 @@ The license covers that file only, not RetroBoost's code, which reads it as data
 
 ## FluentCleaner: MIT
 
-`data/WinRules.ini` and `data/AppRules.ini` come from **FluentCleaner**, <https://github.com/builtbybel/FluentCleaner>. The APP CLEAN engine (winapp2 parsing, detection, `ExcludeKey` handling, the deletable-file check, `REMOVESELF`), the TWEAKS engine (apply, read back, undo) and the UNINSTALL logic (rule classification, the silent-first uninstall chain) in [`src/retroboost.ps1`](src/retroboost.ps1) are PowerShell ports of FluentCleaner's C# code. FluentCleaner's license:
+`data/WinRules.ini` and `data/AppRules.ini` come from **FluentCleaner**, <https://github.com/builtbybel/FluentCleaner>. The APP CLEAN engine (winapp2 parsing, detection, `ExcludeKey` handling, the deletable-file check, `REMOVESELF`), the cookie keep-list (domain matching, the in-place SQLite edit through Windows' `winsqlite3.dll`, leaving a store whole when it can't be edited), the TWEAKS engine (apply, read back, undo) and the UNINSTALL logic (rule classification, the silent-first uninstall chain) in [`src/retroboost.ps1`](src/retroboost.ps1) are PowerShell ports of FluentCleaner's C# code. FluentCleaner's license:
 
 ```text
 MIT License

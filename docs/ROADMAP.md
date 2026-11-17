@@ -10,9 +10,11 @@ Difficulty: 🟢 good first issue · 🟡 medium · 🔴 advanced. Every cleanup
 - [x] **Tweaks**: FluentCleaner's settings catalogue with apply, read-back and undo.
 - [x] **Uninstaller**: Store apps and programs, AppRules classification, silent-first.
 - [x] **Non-interactive mode**: `-Auto`, `-Auto -Shutdown` and a Task Scheduler schedule in Settings.
+- [x] **Cookie keep-list** (2.1): COOKIES screen, SQL edit instead of delete, every browser winapp2 knows.
 
 ## 🟢 Good first issues
 
+- [ ] **Keep-list import and export.** Read and write a plain text file of sites (one per line), as FluentCleaner does; today the list lives in `config.json` (`keepCookies`).
 - [ ] **Configurable protection.** Read extra protected program names and temp-skip folders from `config.json` (`protect`, `tempSkip`) instead of the author's hard-coded `claude` defaults.
 - [ ] **More DISK CLEAN browsers.** Firefox, Opera, Vivaldi, Brave Beta/Nightly, Edge Beta (APP CLEAN already covers them through winapp2).
 - [ ] **Tweak descriptions in other languages.** FluentCleaner keeps translated wording in `Lang\<culture>.ini` beside the catalogue; read the matching file if it exists.
@@ -26,7 +28,7 @@ Difficulty: 🟢 good first issue · 🟡 medium · 🔴 advanced. Every cleanup
 
 ## 🟡 Medium
 
-- [ ] **Cookie keep-list.** FluentCleaner can clear browser cookies *except* for the sites you name (it edits the SQLite cookie store). Port it with Windows' own `winsqlite3.dll`, refuse to touch a store while its browser runs, and test it on a copied cookie database.
+- [ ] **Delete one site's cookies now.** FluentCleaner's Cookie Manager can remove the cookies of chosen sites on the spot; COOKIES could do the same behind a plan screen, reusing `SqlDelete`.
 - [ ] **Search in the lists.** Type to filter APP CLEAN, TWEAKS and UNINSTALL (hundreds of rows on a busy PC).
 - [ ] **Tweak packs.** Read extra `*.ini` catalogues from `%LOCALAPPDATA%\RetroBoost\tweaks\` (a later section with the same name replaces the earlier one, as in FluentCleaner).
 - [ ] **Startup programs screen.** List startup entries (registry Run keys, Startup folder, scheduled tasks), show their impact, disable with a clear undo. Never delete.

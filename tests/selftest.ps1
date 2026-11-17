@@ -19,6 +19,31 @@ function New-Fake([string]$rel, [int]$ageDays = 0) {
 function Present([string]$rel) { Test-Path -LiteralPath (Join-Path $sb $rel) }
 function Start-Dummy { Start-Process (Join-Path $sb 'rbtestproc.exe') -ArgumentList '-n', '600', '127.0.0.1' -WindowStyle Hidden -PassThru }
 function Get-Val([string]$name) { (Get-ItemProperty -LiteralPath "$reg\Tweak" -Name $name -ErrorAction SilentlyContinue).$name }
+# a tiny SQLite client (Windows' own winsqlite3.dll) to build and read the fake browser cookie database
+Add-Type -Namespace RBTest -Name Sql -MemberDefinition @'
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)] static extern int sqlite3_open16(string f, out IntPtr db);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode)] static extern int sqlite3_prepare16_v2(IntPtr db, string sql, int n, out IntPtr st, IntPtr tail);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_step(IntPtr st);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern IntPtr sqlite3_column_text16(IntPtr st, int c);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_finalize(IntPtr st);
+[DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)] static extern int sqlite3_close_v2(IntPtr db);
+public static string[] Run(string file, string sql) {
+    IntPtr db, st; var rows = new System.Collections.Generic.List<string>();
+    sqlite3_open16(file, out db);
+    try {
+        if (sqlite3_prepare16_v2(db, sql, -1, out st, IntPtr.Zero) != 0) throw new InvalidOperationException("bad SQL: " + sql);
+        try { while (sqlite3_step(st) == 100) { var p = sqlite3_column_text16(st, 0); rows.Add(p == IntPtr.Zero ? "" : Marshal.PtrToStringUni(p)); } } finally { sqlite3_finalize(st); }
+    } finally { sqlite3_close_v2(db); }
+    return rows.ToArray();
+}
+'@
+function New-CookieDb([string]$rel) {
+    $p = Join-Path $sb $rel; $null = New-Item -ItemType Directory -Force -Path (Split-Path $p)
+    $null = [RBTest.Sql]::Run($p, 'CREATE TABLE cookies (host_key TEXT, name TEXT)')
+    $null = [RBTest.Sql]::Run($p, "INSERT INTO cookies VALUES ('.github.com','a'), ('api.github.com','b'), ('github.com','c'), ('.tracker.example','d'), ('ads.tracker.example','e'), ('news.example','f'), ('notgithub.com','g')")
+    New-Fake ((Split-Path $rel) + '\Device Bound Sessions') 3   # a session store beside it, as Chromium keeps one
+}
+function Get-Hosts([string]$rel) { (@([RBTest.Sql]::Run((Join-Path $sb $rel), 'SELECT host_key FROM cookies ORDER BY host_key')) -join ',') }
 $dummy = $null; $dummy2 = $null
 try {
     $junk = 'Local\npm-cache\a.bin', 'Local\uv\cache\a.bin', 'Local\foo-updater\setup.exe', 'Local\CrashDumps\d.dmp', 'Roaming\Code\CachedExtensionVSIXs\v.vsix', 'home\.bun\install\cache\c.bin'
@@ -91,6 +116,25 @@ FileKey1=%LocalAppData%\RBTestApp|*.*|RECURSE
     Check 'a rule that is not cache/temp/log starts unticked' (Present 'Local\RBTestApp\History\h.dat')
     Check 'RegKey removed' (-not (Test-Path "$reg\MRU"))
 
+    'cookie keep-list (a real SQLite cookie database in a fake Chrome profile)'
+    $ck = 'Local\Google\Chrome\User Data\Default\Network\Cookies'
+    New-CookieDb $ck
+    Add-Content (Join-Path $sb 'data\Winapp2.ini') "`r`n[RB Test Browser Cookies *]`r`nLangSecRef=3029`r`nDetectFile=%LocalAppData%\Google\Chrome*`r`nFileKey1=%LocalAppData%\Google\Chrome*\User Data\*\Network|Cookies*;Device Bound Sessions*"
+    '{"sound":false,"boostApps":true,"appClean":["RB Test Browser Cookies"]}' | Set-Content (Join-Path $cfgDir 'config.json')
+    $out = & $app -Sandbox $sb -ConfigDir $cfgDir -Keys a, c, n, space, esc *>&1 | Out-String   # COOKIES: N jumps to news.example, SPACE keeps it
+    Check 'COOKIES lists the sites, subdomains folded into their site' ($out -match '\[ \]\s+github\.com' -and $out -match 'tracker\.example' -and $out -notmatch 'ads\.tracker')
+    Check 'SPACE puts a site on the keep-list, saved to config.json' ((Get-Content (Join-Path $cfgDir 'config.json') -Raw | ConvertFrom-Json).keepCookies -contains 'news.example')
+    '{"sound":false,"boostApps":true,"appClean":["RB Test Browser Cookies"],"keepCookies":["https://GitHub.com/login"]}' | Set-Content (Join-Path $cfgDir 'config.json')
+    $null = & $app -Sandbox $sb -ConfigDir $cfgDir -DryRun -Boost -Yes -Keys enter *>&1
+    Check 'dry run leaves every cookie' ((Get-Hosts $ck) -eq '.github.com,.tracker.example,ads.tracker.example,api.github.com,github.com,news.example,notgithub.com')
+    $out = & $app -Sandbox $sb -ConfigDir $cfgDir -Boost -Yes -Keys enter *>&1 | Out-String
+    Check 'kept site and its subdomains stay; every other cookie goes (notgithub.com too)' ((Get-Hosts $ck) -eq '.github.com,api.github.com,github.com' -and $out -match 'COOKIES\s+4 removed from 1 store')
+    $dbs = (Split-Path $ck) + '\Device Bound Sessions'
+    Check 'the cookie file and its session store are kept, not deleted' ((Present $ck) -and (Present $dbs))
+    '{"sound":false,"boostApps":true,"appClean":["RB Test Browser Cookies"]}' | Set-Content (Join-Path $cfgDir 'config.json')
+    $null = & $app -Sandbox $sb -ConfigDir $cfgDir -Boost -Yes -Keys enter *>&1
+    Check 'with no keep-list the cookie rule deletes the whole file, as winapp2 says' (-not (Present $ck) -and -not (Present $dbs))
+
     'tweaks (a one-setting catalogue writing to the throwaway key)'
     @'
 [RB Test Tweak]
@@ -142,7 +186,7 @@ DefaultValue2=<deletevalue>
     Check 'a protected app cannot be ticked' ($out -match 'Protected: Windows')
     Check 'demo mode writes no log and no settings' (-not (Test-Path (Join-Path $demoCfg 'boost.log')) -and -not (Test-Path (Join-Path $demoCfg 'config.json')))
     $out = & $app -Demo -Screenshot all -ConfigDir $demoCfg *>&1 | Out-String
-    Check 'all nine screens render without errors' (([regex]::Matches($out, '(?m)^--- frame')).Count -eq 9 -and $out -notmatch 'Exception|InvalidOperation')
+    Check 'all ten screens render without errors' (([regex]::Matches($out, '(?m)^--- frame')).Count -eq 10 -and $out -notmatch 'Exception|InvalidOperation')
 }
 finally {
     foreach ($d in $dummy, $dummy2) { if ($d -and -not $d.HasExited) { $d.Kill() } }

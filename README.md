@@ -43,6 +43,7 @@ A retro text-mode PC tune-up for Windows, written in PowerShell.<br>
 |---|---|
 | 🧹 **Get gigabytes back, safely** | BOOST cleans only junk that Windows and your apps rebuild by themselves: temp files older than a day, package and browser caches, installer downloads, crash dumps. Documents, photos and downloads are never touched. |
 | 🧽 **4,000+ app cleaners** | APP CLEAN brings the community **winapp2.ini** database, the one CCleaner made famous: browsers, Office, Adobe, chat apps, games, Windows traces. Only cache, temp and log rules start ticked; history, cookies and sessions are yours to tick. |
+| 🍪 **Clear cookies, stay signed in** | The cookie keep-list: pick the sites you use (`C` on APP CLEAN) and the cookie cleaners delete every *other* site's cookies, in every browser winapp2 knows. |
 | 🔕 **Switch off the nagging** | TWEAKS: 98 Windows settings (ads, tips, telemetry, AI extras, taskbar, Explorer) with a live ON/off column and one-key undo. |
 | 🗑️ **Bloatware out** | UNINSTALL lists Store apps and programs, flags the ones put there to advertise or sell, and locks what Windows needs. Nothing is ever pre-ticked. |
 | 🧠 **Stop RAM hogs on your terms** | Build a *kill list* of programs you don't want running. BOOST closes them politely so they can save. Windows, security tools and your terminal are protected and can't be added. |
@@ -68,8 +69,8 @@ RetroBoost 2.0 brings the ideas of [**FluentCleaner**](https://github.com/builtb
 | Tweaks (WinRules.ini): check, apply, reset | **TWEAKS** (`T`) | values are read back after writing; `[A]` marks settings that need admin |
 | Apps: Store apps and programs, AppRules.ini | **UNINSTALL** (`U`) | silent uninstall first, then the program's own window; Windows parts locked |
 | `/AUTO`, `/AUTO /SHUTDOWN`, scheduler | `-Auto`, `-Auto -Shutdown`, SETTINGS → AUTO-CLEAN | the scheduled run never stops programs |
+| Cookie Manager: keep chosen sites' cookies | **COOKIES** (`C` on APP CLEAN), **new in 2.1** | finds the cookie stores through winapp2's own rules, so it covers every browser winapp2 knows |
 | AI explanations, winget uninstall step | left out | they need the network; RetroBoost makes no network calls |
-| Cookie keep-list | not yet | cookie rules start unticked; [roadmap](docs/ROADMAP.md) |
 
 ## 🧭 Free up your C: drive: the plan
 
@@ -123,19 +124,23 @@ cd RetroBoost
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/appclean.png" alt="APP CLEAN screen: winapp2 cleaners grouped by Microsoft Edge, Applications, Multimedia and Utilities, with ticks and sizes" width="380"><br><sub><b>APP CLEAN</b>: 4,000+ winapp2 cleaners, only the safe ones pre-ticked</sub></td>
+    <td align="center"><img src="docs/screenshots/cookies.png" alt="COOKIES screen: kept sites github.com and bank.example above the other sites found in the browsers" width="380"><br><sub><b>COOKIES</b>: the sites that stay signed in</sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/tweaks.png" alt="TWEAKS screen: Windows ad settings with ON/off states, recommended ones ticked, admin-only rows marked [A]" width="380"><br><sub><b>TWEAKS</b>: see what is ON, tick, apply, undo</sub></td>
-  </tr>
-  <tr>
     <td align="center"><img src="docs/screenshots/uninstall.png" alt="UNINSTALL screen: suggested bloatware ticked, your apps below, Windows parts locked" width="380"><br><sub><b>UNINSTALL</b>: bloatware flagged, Windows parts locked (#)</sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/plan.png" alt="Plan screen listing what BOOST will clean and stop" width="380"><br><sub><b>The plan screen</b>: nothing runs until you press ENTER</sub></td>
-  </tr>
-  <tr>
     <td align="center"><img src="docs/screenshots/result.png" alt="Result screen showing disk and RAM before and after" width="380"><br><sub><b>The result</b>: before → after, and what was skipped and why</sub></td>
-    <td align="center"><img src="docs/screenshots/disk.png" alt="Disk clean screen with ticked categories and sizes" width="380"><br><sub><b>DISK CLEAN</b>: tick what to delete, see the size first</sub></td>
   </tr>
   <tr>
+    <td align="center"><img src="docs/screenshots/disk.png" alt="Disk clean screen with ticked categories and sizes" width="380"><br><sub><b>DISK CLEAN</b>: tick what to delete, see the size first</sub></td>
     <td align="center"><img src="docs/screenshots/processes.png" alt="Process list with protected programs dimmed and kill-list programs highlighted" width="380"><br><sub><b>PROCESSES</b>: protected programs are locked (#), your kill list is starred (*)</sub></td>
+  </tr>
+  <tr>
     <td align="center"><img src="docs/screenshots/ram.png" alt="RAM screen with the biggest memory users" width="380"><br><sub><b>RAM TRIM</b>: see the biggest memory users</sub></td>
+    <td align="center"><img src="docs/screenshots/help.png" alt="Help screen describing every screen and the safety rules" width="380"><br><sub><b>HELP</b> (F1): every screen and the safety rules on one page</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/screenshots/theme-green.png" alt="Green phosphor theme" width="380"><br><sub><b>Green phosphor</b> theme</sub></td>
@@ -178,6 +183,12 @@ The 4,076 rules of [winapp2.ini](https://github.com/MoscaDotTo/Winapp2) describe
 - **See before you clean.** `S` scans the ticked rules and shows what they would delete now; the bottom lines show exactly which paths and registry keys the selected rule names, and any winapp2 warning.
 - **Guards that beat any rule.** Documents, Desktop, Downloads, Pictures, Music, Videos and OneDrive, the **whole Windows folder**, Store app installs, installer caches, temp files younger than a day and browser-extension databases (password managers) are never touched. Files in use are skipped, not fought, and are not counted. A browser rule waits (`[!] close Edge`) while that browser runs.
 - **Your own rules.** Put winapp2-format `.ini` files in `%LOCALAPPDATA%\RetroBoost\custom\`: they are read after the built-in database, and a rule with the same name replaces the built-in one. Add exclusions to `config.json`, in winapp2 syntax: `"exclude": ["PATH|%LocalAppData%\\MyApp\\", "FILE|%AppData%\\Tool\\|settings.db"]`.
+
+### 🍪 The cookie keep-list (new in 2.1)
+
+Clearing cookies signs you out of everything. Press **`C`** on APP CLEAN to open **COOKIES**: every site that has cookies in your browsers, read from their cookie databases (site names only, never the cookies themselves). `SPACE` keeps a site, and a letter jumps to the sites that start with it.
+
+With sites on the list, a browser's cookie cleaner (*Google Chrome Web Browsing Cookies* and the rest) **no longer deletes the cookie file**: it deletes every other site's cookies inside it and keeps the kept sites **and their subdomains** (`github.com` keeps `api.github.com`, not `notgithub.com`). It works for Chrome, Edge, Brave, Opera, Vivaldi, Arc, Firefox, Thunderbird and every other browser winapp2 has a cookie rule for, using the SQLite that ships with Windows. A cookie database that is busy (browser open) or can't be edited is left whole, never deleted instead. The plan screen warns when a cookie cleaner would sign you out of every site. The list lives in `config.json` (`"keepCookies"`).
 
 ## 🔕 TWEAKS
 
@@ -244,7 +255,8 @@ RetroBoost.cmd -Auto              no screen: safe clean, log, exit (for Task Sch
 | `B` `D` `A` `R` `P` `T` `U` `S` `H` `Q` | main menu | BOOST, Disk, App clean, RAM, Processes, Tweaks, Uninstall, Settings, Help, Quit |
 | `← →` `PgUp` `PgDn` | App clean, Tweaks, Uninstall | jump between groups, page through the list |
 | `SPACE` `A` `N` `W` | Disk | tick, defaults, none, open Windows Storage settings |
-| `SPACE` `A` `N` `S` | App clean | tick (a group row ticks the group), safe set, none, scan sizes |
+| `SPACE` `A` `N` `S` `C` | App clean | tick (a group row ticks the group), safe set, none, scan sizes, cookie keep-list |
+| `SPACE` `a`–`z` | Cookies | keep or forget a site, jump to the next site starting with that letter |
 | `SPACE` `A` `N` | Tweaks | tick or mark undo, recommended, none |
 | `SPACE` `A` `N` | Uninstall | tick, suggested, none |
 | `T` | RAM | trim now |
@@ -267,6 +279,12 @@ BOOST and DISK CLEAN only touch the categories listed above: caches and leftover
 <summary><b>Does it need administrator rights?</b></summary>
 
 No, and it never asks for them. Everything runs as you. If you start it as administrator (the title bar then says `ADMIN`), the `[A]` tweaks unlock and APP CLEAN may also remove machine-wide entries that rules name (never inside the Windows folder). For Windows' own junk (Update cache, previous installations) it opens *Settings → System → Storage* so Windows can do it.
+</details>
+
+<details>
+<summary><b>Will APP CLEAN sign me out of websites?</b></summary>
+
+Not unless you tick a browser's *Web Browsing Cookies* cleaner: those start unticked. If you tick one, put the sites you use on the cookie keep-list first (`C` on APP CLEAN): their cookies stay, and you stay signed in there. The plan screen tells you which case you are in before anything runs.
 </details>
 
 <details>
@@ -324,7 +342,7 @@ Found a bug, especially one where RetroBoost touched something it shouldn't? **[
 
 Next up (the full list, with good-first-issue ideas, is in [docs/ROADMAP.md](docs/ROADMAP.md)):
 
-- [ ] Cookie keep-list for APP CLEAN (keep your logins, clear the rest; FluentCleaner has one)
+- [ ] Search in the APP CLEAN, TWEAKS and UNINSTALL lists
 - [ ] Configurable protected-programs list and temp-skip folders
 - [ ] Startup-programs screen (list, disable, undo)
 - [ ] Big-files explorer: where did my space go?

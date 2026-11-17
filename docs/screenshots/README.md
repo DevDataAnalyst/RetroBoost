@@ -2,7 +2,7 @@
 
 ## The generated images
 
-`main.png`, `disk.png`, `appclean.png`, `tweaks.png`, `uninstall.png`, `ram.png`, `processes.png`, `settings.png`, `help.png`, `plan.png`, `running.png`, `result.png`, `theme-green.png` and `theme-amber.png` are **rendered by [`tools/Render-Screenshots.ps1`](../../tools/Render-Screenshots.ps1)** from the app's own screen buffer, using the built-in `-Demo` data. They contain invented numbers and program names: nothing from a real PC.
+`main.png`, `disk.png`, `appclean.png`, `cookies.png`, `tweaks.png`, `uninstall.png`, `ram.png`, `processes.png`, `settings.png`, `help.png`, `plan.png`, `running.png`, `result.png`, `theme-green.png` and `theme-amber.png` are **rendered by [`tools/Render-Screenshots.ps1`](../../tools/Render-Screenshots.ps1)** from the app's own screen buffer, using the built-in `-Demo` data. They contain invented numbers and program names: nothing from a real PC.
 
 Regenerate them after any UI change (Windows only):
 

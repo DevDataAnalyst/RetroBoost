@@ -1,6 +1,6 @@
 # Architecture
 
-A guide for contributors. RetroBoost is deliberately **one readable PowerShell 7 script** ([`src/retroboost.ps1`](../src/retroboost.ps1), about 1,500 lines) plus three rule files it reads as data. If it outgrows that, splitting it into modules is a welcome proposal; open an issue first.
+A guide for contributors. RetroBoost is deliberately **one readable PowerShell 7 script** ([`src/retroboost.ps1`](../src/retroboost.ps1), about 1,700 lines) plus three rule files it reads as data. If it outgrows that, splitting it into modules is a welcome proposal; open an issue first.
 
 ## Repository map
 
@@ -23,12 +23,13 @@ THIRD-PARTY-NOTICES.md      where the rule files and the ported engines come fro
 Top to bottom, in one file:
 
 1. **Parameters and state**: `-Boost -Yes -DryRun -Demo -Auto -Shutdown -Theme -ConfigDir`, plus test hooks.
-2. **Settings and log**: `%LOCALAPPDATA%\RetroBoost\config.json` (theme, sound, confirm, kill list, `boostApps`, `schedule`, `appClean`, `exclude`) and `boost.log`.
+2. **Settings and log**: `%LOCALAPPDATA%\RetroBoost\config.json` (theme, sound, confirm, kill list, `boostApps`, `schedule`, `appClean`, `exclude`, `keepCookies`) and `boost.log`.
 3. **Helpers**: sizes, formatting, word wrap, system numbers (`Get-Sys`), safe path measuring (`Get-PathBytes`).
 4. **Process protection**: `$protectedNames` and `Test-Protected`.
 5. **Disk categories**: the `$cats` list, `Scan-Disk` (measure), `Invoke-Clean` (delete; hands APP CLEAN rules to `Clean-Rule`).
-6. **Processes and RAM**: `Load-Procs`, `Get-KillTargets`, `Stop-App`, `Invoke-RamTrim`; `Use-Native` compiles the few Windows calls (`EmptyWorkingSet`, `SendMessageTimeout`, a `CreateFileW` delete-access probe).
+6. **Processes and RAM**: `Load-Procs`, `Get-KillTargets`, `Stop-App`, `Invoke-RamTrim`; `Use-Native` compiles the few Windows calls (`EmptyWorkingSet`, `SendMessageTimeout`, a `CreateFileW` delete-access probe, and `SqlRows`/`SqlDelete` over Windows' own `winsqlite3.dll`).
 7. **APP CLEAN engine** (port of FluentCleaner's `Winapp2Parser`, `DetectionService`, `PathExpander`, `CleaningService`): `Read-Rules` → `Test-Rule` → `Scan-Rule` → `Clean-Rule`, with the guards `Test-Never` and `Test-Keep`.
+   **Cookie keep-list** (port of `CookieService`): `Get-CookieStores` finds cookie databases through the detected cookie rules, `Load-Cookies` reads their site names, and `Clean-Rule` hands a cookie database to `Keep-Cookies` (an SQL edit) instead of deleting it whenever `keepCookies` lists a site.
 8. **TWEAKS engine** (port of `TweakDatabase`, `RegistryService`, `Scanner`, `Applier`): `Read-Tweaks`, `Test-TweakVal`, `Set-TweakVal`, `Invoke-Tweak`.
 9. **UNINSTALL engine** (port of `AppRules`, `PackageService`, `ProgramService`): `Read-AppRules`, `Get-Safety`, `Load-Apps`, `Remove-App`.
 10. **AUTO**: `Invoke-Auto` (the windowless run) and `Set-Schedule` (Task Scheduler).
@@ -49,7 +50,7 @@ Styles are indices into a theme table (`$themes`, 256-colour `fg;bg[;bold]`). Ad
 Redraw → Read-Key (2.5 s tick) → Key-<screen> handler → repeat
 ```
 
-`$app.screen` names the current screen; `Redraw` calls `Draw-<screen>`; the key goes to `Key-<screen>`. Screens: `main disk appclean ram procs tweaks uninst settings help`, plus `run` and `result`.
+`$app.screen` names the current screen; `Redraw` calls `Draw-<screen>`; the key goes to `Key-<screen>`. Screens: `main disk appclean cookies ram procs tweaks uninst settings help`, plus `run` and `result`.
 
 ### One pipeline for every action
 
@@ -65,11 +66,11 @@ Keys: `Title`, `Clean` (DISK categories and APP CLEAN rules), `Kill`, `Ram`, `Fo
 
 ### The list screens
 
-APP CLEAN, TWEAKS and UNINSTALL show one scrolling list: `Set-Items` turns (group name, members) pairs into header rows followed by their members, `Move-Sel` moves the selection (`← →` jump between headers), `Draw-List` draws rows 5–17 with a per-screen formatter, and `Put-Info` fills rows 19–21 with details of the selected row. `SPACE` on a header row acts on the whole group.
+APP CLEAN, COOKIES, TWEAKS and UNINSTALL show one scrolling list: `Set-Items` turns (group name, members) pairs into header rows followed by their members, `Move-Sel` moves the selection (`← →` jump between headers), `Draw-List` draws rows 5–17 with a per-screen formatter, and `Put-Info` fills rows 19–21 with details of the selected row. `SPACE` on a header row acts on the whole group.
 
 ### Safety plumbing
 
-Every destructive function checks `$script:Dry` (dry-run) or `$Demo`. The code that deletes files is `Invoke-Clean` and `Clean-Rule`; the code that writes registry values is `Set-TweakVal` (and `Clean-Rule` for rule `RegKey`s); the code that uninstalls is `Remove-App`; the code that stops programs is `Stop-App`. Keep it that way: it makes review easy. The guards for APP CLEAN live in `Test-Never` (folders no rule may touch) and `Test-Keep` (per-file checks); a rule can never bypass them.
+Every destructive function checks `$script:Dry` (dry-run) or `$Demo`. The code that deletes files is `Invoke-Clean` and `Clean-Rule`; the code that edits cookie databases is `Keep-Cookies`; the code that writes registry values is `Set-TweakVal` (and `Clean-Rule` for rule `RegKey`s); the code that uninstalls is `Remove-App`; the code that stops programs is `Stop-App`. Keep it that way: it makes review easy. The guards for APP CLEAN live in `Test-Never` (folders no rule may touch) and `Test-Keep` (per-file checks); a rule can never bypass them.
 
 ## Test hooks
 
@@ -79,7 +80,7 @@ These switches exist so the app can be tested and photographed without a keyboar
 |---|---|---|
 | `-Sandbox <dir>` | replaces every real location with a folder inside `<dir>` (caches, `%WinDir%`, the personal folders, every winapp2 variable), reads the rule files from `<dir>\data`, skips the Recycle Bin and the running-browser check, restricts the RAM trim to processes named `rbtest*` and UNINSTALL to programs named `rbtest*` (no Store apps) | `-Sandbox $env:TEMP\rb -DryRun` |
 | `-Keys a,b,c` | feeds scripted keystrokes instead of the keyboard (`enter`, `esc`, `space`, `up`, `down`, `left`, `right`, `pgdn`, `end`, letters); output is plain-text frames; never creates a scheduled task | `-Keys b,enter` |
-| `-Screenshot <screen>` | prints one screen as plain text and exits (`main disk appclean ram procs tweaks uninst settings help all`) | `-Screenshot all` |
+| `-Screenshot <screen>` | prints one screen as plain text and exits (`main disk appclean cookies ram procs tweaks uninst settings help all`) | `-Screenshot all` |
 | `-Dump <file>` | with the two above: also writes each frame as JSON (characters, style ids, palette) | `-Demo -Screenshot main -Dump main.json` |
 | `-Demo` | invented system numbers, categories, rules, tweak states, apps and programs | `-Demo -Keys u,a,enter,enter` |
 
@@ -89,6 +90,7 @@ Try the app headlessly:
 pwsh -File src/retroboost.ps1 -Demo -Screenshot all        # every screen as text
 pwsh -File src/retroboost.ps1 -Demo -Keys b,enter          # a whole BOOST, frame by frame
 pwsh -File src/retroboost.ps1 -DryRun -Keys a,s            # APP CLEAN on your PC: scan only, nothing deleted
+pwsh -File src/retroboost.ps1 -Demo -Keys a,c              # the COOKIES screen with invented sites
 pwsh -File tests/selftest.ps1                              # the safety test
 pwsh -File tools/Render-Screenshots.ps1                    # regenerate docs/screenshots/*.png
 ```
@@ -132,6 +134,7 @@ Save yourself an evening:
 - **`$hashtable.Remove` is a method** when the key is missing, not `$null`. Read optional keys as `$job['Remove']`.
 - **`'text'.IndexOf('x', 'OrdinalIgnoreCase')` picks the `(string, int startIndex)` overload** and throws. Pass `[StringComparison]::OrdinalIgnoreCase`. (`StartsWith`/`EndsWith` have no such overload and are fine.) This one silently emptied every APP CLEAN scan until the self-test caught it.
 - **`Group-Object` sorts its groups.** Use `Group-Keep` to keep a sorted list's order.
+- **SQLite deletes its own `-journal` file when a transaction commits.** Don't test "helper files are kept" with a fake journal; the self-test uses the *Device Bound Sessions* file. The self-test has its own tiny `winsqlite3` client (`RBTest.Sql`) to build and read the fake cookie database.
 - **A child process inherits the console.** Uninstallers and other tools must get redirected (and drained) standard streams, or their output lands on the retro screen.
 - **`pwsh -File … -Param a,b` passes `a,b` as one string.** Split it yourself.
 - **`$a = [long]; [Math]::Max(1, $a)`** picks the `int` overload and fails on large values; use `1L`.

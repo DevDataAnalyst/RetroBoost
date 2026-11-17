@@ -8,6 +8,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - _Your contribution here._ See the [roadmap](docs/ROADMAP.md).
 
+## [2.1.0] - 2026-11-17
+
+### Added
+- **Cookie keep-list** (port of FluentCleaner's Cookie Manager): `C` on APP CLEAN opens **COOKIES**, every site with cookies in your browsers (site names only, read-only), subdomains folded into their site, kept sites on top. `SPACE` keeps or forgets a site; a letter jumps to the next site starting with it. The list is saved in `config.json` (`keepCookies`).
+- With sites kept, a browser's cookie cleaner **edits** its cookie database instead of deleting it: one `DELETE` in a transaction removes every other site's cookies, kept sites and their subdomains stay, the file is compacted, and its journal and session files are left alone. A database that is busy or can't be edited is left whole. Works for Chromium-family (`Cookies`) and Firefox-family (`cookies.sqlite`) browsers, found through winapp2's own cookie rules, with Windows' built-in `winsqlite3.dll`.
+- The plan screen warns when a cookie cleaner would sign you out of every site; the result screen says how many cookies were removed and how many sites kept.
+- Self-test: 39 checks; six new ones build a real SQLite cookie database in a fake Chrome profile and check the COOKIES screen, saving the list, dry-run, the edit (subdomains kept, look-alike domains removed), the files kept, and the whole-file delete when no site is kept.
+
+### Changed
+- APP CLEAN's hint bar lists `C`; Settings shows the keep-list size; the help page mentions it.
+
 ## [2.0.0] - 2026-11-17
 
 The FluentCleaner update: the ideas, engines and rule files of [FluentCleaner](https://github.com/builtbybel/FluentCleaner), ported to PowerShell and the retro text UI. Credits and licenses: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
@@ -46,6 +57,7 @@ First public release.
 - **Screenshot renderer** (`tools/Render-Screenshots.ps1`) that paints README images from the app's own screen buffer.
 - Documentation: README, [C: drive plan](docs/FREE-UP-C-DRIVE.md), [safety model](docs/SAFETY.md), [architecture](docs/ARCHITECTURE.md), [roadmap](docs/ROADMAP.md), contributing guide, code of conduct and security policy.
 
-[Unreleased]: https://github.com/DevDataAnalyst/RetroBoost/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/DevDataAnalyst/RetroBoost/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/DevDataAnalyst/RetroBoost/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/DevDataAnalyst/RetroBoost/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/DevDataAnalyst/RetroBoost/releases/tag/v1.0.0

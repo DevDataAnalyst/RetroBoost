@@ -46,6 +46,15 @@ APP CLEAN runs the rules of `data/Winapp2.ini` (and your own `custom\*.ini`) the
 
 **BOOST** runs APP CLEAN only if you switch on SETTINGS → BOOST+APP CLEAN, and then only your ticks.
 
+### The cookie keep-list
+
+- **No list, winapp2's behaviour.** A browser's cookie cleaner deletes its cookie database, as the rule says. These rules start unticked, and the plan screen warns that every site will sign you out.
+- **With a list, an edit instead of a delete.** For a cookie database (`Cookies` in Chromium-family browsers, `cookies.sqlite` in Firefox-family ones) RetroBoost runs one `DELETE` inside a transaction: every cookie whose host is not a kept site or a subdomain of one goes (`github.com` keeps `.github.com` and `api.github.com`, not `notgithub.com`), then the file is compacted. Its journal and *Device Bound Sessions* files are left alone, so a kept login isn't invalidated.
+- **Never worse than doing nothing.** If the database can't be opened or edited (the browser holds it, it isn't SQLite, the table isn't there), RetroBoost leaves the file whole and logs why. It never falls back to deleting it. Any error before the commit rolls the transaction back.
+- **Read-only browsing.** The COOKIES screen opens each database read-only and reads only site names, never cookie values. Nothing leaves the PC.
+- **Where it looks.** The databases are found through the detected browsers' own winapp2 cookie rules, and edited with the SQLite that ships with Windows (`winsqlite3.dll`): no extra binaries.
+- Sites are listed by their last two labels (three after `co.uk`-style endings), so a kept site always keeps at least what you picked, never less.
+
 ## TWEAKS (registry settings)
 
 - The catalogue is `data/WinRules.ini`. Each setting names its registry values, the **recommended** value and the **Windows default**. A setting is listed only if it fits your Windows version (`OsVersion`) and, where it says so, the program it changes is installed (`RequiresKey`).
@@ -95,7 +104,7 @@ For a program with a window, RetroBoost sends a normal close request and waits a
 
 - `-DryRun`: every screen works; nothing is deleted, set, uninstalled, scheduled, trimmed or stopped; the log lines are prefixed `[DRY]`.
 - `-Demo`: invented data; the real PC isn't read (the tweak catalogue file is, the registry isn't), no log or settings are written.
-- Log: `%LOCALAPPDATA%\RetroBoost\boost.log` records each category or rule with its size, each setting applied or undone, each app removed or not, each program stopped, the RAM trim and every `-Auto` run.
+- Log: `%LOCALAPPDATA%\RetroBoost\boost.log` records each category or rule with its size, each cookie database edited (or left whole, and why), each setting applied or undone, each app removed or not, each program stopped, the RAM trim and every `-Auto` run.
 
 ## How it is tested
 
@@ -104,10 +113,11 @@ For a program with a window, RetroBoost sends a normal close request and waits a
 - a dry run leaves every file, registry value and program alone, reports what it *would* stop, and never offers `explorer` even if it is in the kill list;
 - a real BOOST removes the caches, updater downloads, dumps and VSIX cache and the old temp file, **keeps** the recent temp file, the `claude` folder and the unticked shader cache, and stops only the fake program;
 - the winapp2 engine removes what its test rule names (recursing), keeps the `ExcludeKey` file, the non-matching file, a file **in use**, the Documents file and the **Windows-folder** file, leaves an unticked rule alone, ignores a rule whose app isn't installed, and removes the named registry key;
+- a real SQLite cookie database in a fake Chrome profile is listed by site on the COOKIES screen, a site kept with `SPACE` is saved, a dry run changes no cookie, a real run keeps the kept site and its subdomains and removes the rest (a look-alike domain too), keeps the database and its session file, and without a keep-list the whole database is deleted as the rule says;
 - a test tweak is applied (two values, read back) and then undone (default written back, extra value deleted), and a dry run writes nothing;
 - a throwaway program entry is really uninstalled by its silent uninstaller (and a dry run leaves it); under `-Sandbox` only programs named `rbtest*` are listed, so no real app is ever offered;
 - `-Auto` cleans, logs and never stops a program;
-- demo mode shows invented programs and apps, refuses to tick a protected app, writes nothing, and all nine screens render without errors.
+- demo mode shows invented programs and apps, refuses to tick a protected app, writes nothing, and all ten screens render without errors.
 
 CI runs it on Windows for every push and pull request. A new cleanup category or engine change must come with a sandbox test (see [CONTRIBUTING](../CONTRIBUTING.md#add-a-cleanup-category)).
 

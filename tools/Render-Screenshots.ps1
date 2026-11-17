@@ -77,6 +77,7 @@ $shots = @(
     @{ File = 'main'; Args = '-Screenshot', 'main'; Screen = 'main'; Which = 'last' }
     @{ File = 'disk'; Args = '-Screenshot', 'disk'; Screen = 'disk'; Which = 'last' }
     @{ File = 'appclean'; Args = '-Screenshot', 'appclean'; Screen = 'appclean'; Which = 'last' }
+    @{ File = 'cookies'; Args = '-Screenshot', 'cookies'; Screen = 'cookies'; Which = 'last' }
     @{ File = 'tweaks'; Args = '-Keys', 't,a'; Screen = 'tweaks'; Which = 'last' }        # A = the recommended settings ticked
     @{ File = 'uninstall'; Args = '-Keys', 'u,a'; Screen = 'uninst'; Which = 'last' }     # A = the suggested apps ticked
     @{ File = 'ram'; Args = '-Screenshot', 'ram'; Screen = 'ram'; Which = 'last' }
